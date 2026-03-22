@@ -26,59 +26,120 @@ Integration of the [norma-core ElRobot](https://github.com/norma-core/norma-core
 | 7 | wrist_yaw | Wrist side-to-side |
 | 8 | gripper | Parallel jaw open/close |
 
-## Hardware Setup
+---
 
-### Prerequisites
+## Installation
 
-- ElRobot 3D-printed parts assembled per [norma-core manual](https://github.com/norma-core/norma-core/tree/main/hardware/elrobot)
-- 8x Feetech ST3215 servos per arm
-- Feetech Serial Bus Driver Board per arm
-- 12V/4A PSU (follower), 7.4V/3A PSU (leader)
-- USB cables
+### Step 1: Prerequisites
 
-### Wiring
+Make sure you have the following before starting:
 
-1. Connect servos in daisy-chain to the driver board
-2. Connect DC power supply to the driver board
-3. Connect driver board to PC via USB
-4. Verify port: `ls /dev/ttyACM*`
+- **Hardware:**
+  - ElRobot 3D-printed parts assembled per [norma-core manual](https://github.com/norma-core/norma-core/tree/main/hardware/elrobot)
+  - 8x Feetech ST3215 servos per arm
+  - Feetech Serial Bus Driver Board per arm
+  - 12V/4A power supply (follower arm)
+  - 7.4V/3A power supply (leader arm)
+  - USB cables
 
-## Software Setup
+- **Software:**
+  - Ubuntu 20.04+ (or another Linux distro)
+  - Python 3.10+
+  - `pip` package manager
+  - `git`
 
-### Install Dependencies
+### Step 2: Clone This Repository
 
 ```bash
-# Install LeRobot with Feetech servo support
-cd ~/lerobot
-pip install -e ".[feetech]"
-
-# Install websockets (required for Telegrip Web UI)
-pip install websockets
+cd ~
+git clone https://github.com/norma-core/elrobot_project.git
+cd elrobot_project
 ```
 
-### Step 1: Verify Serial Port
+### Step 3: Install LeRobot with Feetech Support
 
-Plug the driver board into the PC via USB and verify the port is detected:
+LeRobot is the core framework that drives the ElRobot arm. Install it in editable mode with the Feetech servo extras:
+
+```bash
+cd ~
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+pip install -e ".[feetech]"
+```
+
+> **Note:** This installs the `lerobot` package along with CLI tools (`lerobot-calibrate`, `lerobot-teleoperate`, `lerobot-record`, `lerobot-train`, etc.) and the Feetech motor driver dependencies.
+
+### Step 4: Install Additional Python Dependencies
+
+```bash
+pip install websockets   # Required for Telegrip Web UI
+pip install pyserial     # Required for scan_bus.py
+pip install numpy        # Required for keyboard control & telegrip
+```
+
+### Step 5: Copy ElRobot Drivers into LeRobot
+
+The `elrobot_follower/` and `elrobot_leader/` directories contain the robot and teleoperator drivers. They need to be placed inside the LeRobot package so that LeRobot can discover them:
+
+```bash
+# Copy the follower (robot) driver
+cp -r ~/elrobot_project/elrobot_follower ~/lerobot/lerobot/robots/elrobot_follower
+
+# Copy the leader (teleoperator) driver
+cp -r ~/elrobot_project/elrobot_leader ~/lerobot/lerobot/teleoperators/elrobot_leader
+```
+
+Verify the drivers are registered:
+
+```bash
+python -c "from lerobot.robots.elrobot_follower.config_elrobot_follower import ElRobotFollowerConfig; print('Follower driver OK')"
+python -c "from lerobot.teleoperators.elrobot_leader.config_elrobot_leader import ElRobotLeaderConfig; print('Leader driver OK')"
+```
+
+### Step 6: Set Script Permissions
+
+```bash
+cd ~/elrobot_project
+chmod +x scripts/*.sh
+```
+
+### Step 7: Verify USB Serial Ports
+
+Connect the driver board(s) to the PC via USB and check that the serial ports are detected:
 
 ```bash
 ls /dev/ttyACM*
 # Expected: /dev/ttyACM0 (follower), /dev/ttyACM1 (leader)
 ```
 
-> **Tip:** If no port appears, check USB cable, driver board power, and run `dmesg | tail` to debug.
+> **Tip:** If no port appears, check the USB cable, driver board power, and run `dmesg | tail` to debug.
 
-### Step 2: Scan Bus (Debug)
-
-Check if servos are detected and at which baud rate. Scans all IDs (0–252) across common baud rates:
+If you get permission errors accessing the port, add your user to the `dialout` group:
 
 ```bash
-cd ~/elrobot_project
+sudo usermod -aG dialout $USER
+# Log out and log back in for the change to take effect
+```
+
+### Step 8: Scan the Bus (Optional Debug)
+
+Check if servos are detected and at which baud rate:
+
+```bash
 python scripts/scan_bus.py --port /dev/ttyACM0
 ```
 
-### Step 3: Setup Motor IDs
+This scans all motor IDs (0-252) across common baud rates and reports what it finds.
 
-Connect **one servo at a time** to the driver board. Each servo is assigned a unique ID (1–8) matching the [Joint Mapping](#joint-mapping) table above.
+---
+
+## Setup
+
+Once installation is complete, follow these steps to configure the robot.
+
+### Setup Motor IDs
+
+Connect **one servo at a time** to the driver board. Each servo is assigned a unique ID (1-8) matching the [Joint Mapping](#joint-mapping) table.
 
 **Follower arm** (connect 12V/4A power supply):
 
@@ -101,7 +162,7 @@ lerobot-setup-motors --teleop.type=elrobot_leader --teleop.port=/dev/ttyACM1
 
 > **Important:** Repeat for each servo one at a time. After all 8 IDs are assigned, reconnect all servos in daisy-chain before proceeding.
 
-### Step 4: Calibrate
+### Calibrate Arms
 
 Calibration records each joint's range of motion. Run once per arm after motor IDs are set.
 
@@ -132,11 +193,11 @@ lerobot-calibrate --teleop.type=elrobot_leader --teleop.port=/dev/ttyACM1
 
 > **Config files:** `configs/calibrate_follower.yaml`, `configs/calibrate_leader.yaml`
 
-### Step 5: Control the Arm
+---
 
-Choose one of three control methods:
+## Usage
 
-#### 5a. Keyboard Control (Terminal)
+### Keyboard Control (Terminal)
 
 Direct joint-space control from the terminal — no leader arm or browser needed:
 
@@ -173,7 +234,7 @@ python scripts/keyboard_control.py --port /dev/ttyACM0 --speed 5.0 --fps 30
 | P | Print current joint positions |
 | ESC | Quit |
 
-#### 5b. Telegrip (Web UI)
+### Telegrip (Web UI)
 
 Browser-based keyboard control with live joint visualization. Works over SSH/headless — no X11 needed.
 
@@ -199,7 +260,7 @@ python telegrip/elrobot_telegrip.py --no-robot
 
 > **Config:** `telegrip/config.yaml` — adjust `angle_step`, `pos_step`, network ports, and `send_interval`.
 
-#### 5c. Leader-Follower Teleoperate
+### Leader-Follower Teleoperation
 
 Control the follower arm in real-time using the leader arm:
 
@@ -217,7 +278,7 @@ lerobot-teleoperate \
 
 > **Config:** `configs/teleoperate.yaml`
 
-### Step 6: Record Dataset
+### Record Dataset
 
 Record teleoperation episodes for imitation learning:
 
@@ -238,7 +299,7 @@ lerobot-record \
 
 > **Config:** `configs/record.yaml`
 
-### Step 7: Train Policy
+### Train Policy
 
 ```bash
 lerobot-train \
@@ -247,7 +308,7 @@ lerobot-train \
     --output_dir=outputs/train/elrobot_act
 ```
 
-### Step 8: Replay / Evaluate
+### Replay / Evaluate
 
 ```bash
 lerobot-replay \
@@ -255,6 +316,8 @@ lerobot-replay \
     --repo-id=my-elrobot-dataset \
     --episode=0
 ```
+
+---
 
 ## Project Structure
 
@@ -296,7 +359,9 @@ elrobot_project/
 | `Missing motor IDs` / empty motor list | Servos not powered, not wired, or IDs not assigned. Run `scan_bus.py` first |
 | `NotImplementedError` on setup_motors | Clear pycache: `find ~/lerobot -name "*.pyc" -delete` |
 | Port not found | Check `ls /dev/ttyACM*` or `ls /dev/ttyUSB*` |
+| Permission denied on `/dev/ttyACM*` | Run `sudo usermod -aG dialout $USER` then log out/in |
 | Servos shaking | Reduce P_Coefficient in driver (default set to 16) |
+| `ModuleNotFoundError: websockets` | Run `pip install websockets` |
 
 ## References
 
